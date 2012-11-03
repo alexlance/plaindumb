@@ -1,0 +1,299 @@
+#!/usr/bin/env python
+#
+# plaindumb - a cleaner, less surprising syntax than markdown
+#
+#
+# Default to html to stdout:
+#
+# $ plaindumb input.txt > output.html
+#
+#
+# Or use file suffix of second argument to determine output format:
+#
+# $ plaindumb input.txt output.html
+# $ plaindumb input.txt output.rst
+#
+
+import os
+import sys
+import re
+
+class message:
+  def msg(self, s):
+    """Print a message to the screen (stdout)."""
+    if not self.quiet:
+      print "--- " + str(s)
+      sys.stdout.flush()
+
+  def yay(self, s):
+    """Print a success message to the screen (stdout)."""
+    if not self.quiet:
+      print ":-] " + str(s)
+      sys.stdout.flush()
+
+  def err(self, s):
+    """Print a failure message to the screen (stderr)."""
+    sys.stderr.write("!!! "+str(s)+"\n")
+
+  def die(self, s):
+    """Print a failure message to the screen (stderr) and then halt."""
+    self.err(s)
+    sys.exit(1)
+
+  def dbg(self, s):
+    """Print a message to the screen (stdout) for debugging only."""
+    if self.debug:
+      print "DBG " + str(s)
+      sys.stdout.flush()
+
+
+
+class tokenizer:
+
+  tokens = {"nl"   : "{PD-TOKEN-NL}"
+           ,"h1_s" : "{PD-S-TOKEN-HEADER-1}"  ,"h1_e" : "{PD-E-TOKEN-HEADER-1}"
+           ,"h2_s" : "{PD-S-TOKEN-HEADER-2}"  ,"h2_e" : "{PD-E-TOKEN-HEADER-2}"
+           ,"h3_s" : "{PD-S-TOKEN-HEADER-3}"  ,"h3_e" : "{PD-E-TOKEN-HEADER-3}"
+           ,"pa_s" : "{PD-S-TOKEN-PARAGRAPH}" ,"pa_e" : "{PD-E-TOKEN-PARAGRAPH}"
+           ,"pr_s" : "{PD-S-TOKEN-PRE}"       ,"pr_e" : "{PD-E-TOKEN-PRE}"
+           ,"ol_s" : "{PD-S-TOKEN-OL}"        ,"ol_e" : "{PD-E-TOKEN-OL}"
+           ,"ul_s" : "{PD-S-TOKEN-UL}"        ,"ul_e" : "{PD-E-TOKEN-UL}"
+           ,"li"   : "{PD-TOKEN-LI}"          ,"lin"  : "{PD-TOKEN-LIN}"
+           ,"a_s"  : "{PD-S-TOKEN-A}"         ,"a_m"  : "{PD-M-TOKEN-A}" ,"a_e"  : "{PD-E-TOKEN-A}"
+           ,"b_s"  : "{PD-S-TOKEN-B}"         ,"b_e"  : "{PD-E-TOKEN-B}"
+           ,"u_s"  : "{PD-S-TOKEN-U}"         ,"u_e"  : "{PD-E-TOKEN-U}"
+           ,"i_s"  : "{PD-S-TOKEN-I}"         ,"i_e"  : "{PD-E-TOKEN-I}"
+           ,"slash": "{PD-TOKEN-SLASH}"
+           ,"under": "{PD-TOKEN-UNDERSCORE}"
+           ,"lt"   : "{PD-TOKEN-LESSTHAN}" ,"gt"   : "{PD-TOKEN-GREATERTHAN}"
+           }
+
+  def __init__(self):
+    pass
+
+  def tokenize(self, f):
+    m = message()
+    if not os.path.exists(f):
+      m.die("File doesn't exist: "+f)
+
+    with open(f) as l:
+      lines = l.readlines()
+
+    out = "".join(lines)
+
+    # shorthand
+    t = self.tokens
+
+    # prepend new line character, this makes the subsequent regexes simpler
+    out = "\n\n"+out
+    out = out.replace("\n",t['nl'])
+    clumps = out.split(t['nl']+t['nl'])
+    stack = []
+
+    for line in clumps:
+      doNothing = False
+
+      # strip leading and trailing nl from clump
+      line = re.sub('^'+t['nl'],"",line)
+      line = re.sub(t['nl']+'$',"",line)
+
+      # Text delimited by >>> and <<< is unaltered
+      if re.match('>>>(.*?)<<<', line):
+        doNothing = True
+        line = re.sub('>>>(.*?)<<<', '\\1', line)
+        line = line.replace(t['nl'],'\n')
+
+      # <pre>
+      elif len(line)>0 and line[0] == ' ':
+        start, end = t['pr_s'], t['pr_e']
+        line = line.replace(t['nl'],"\n")
+
+      # <ol>
+      elif re.match('\s*[0-9]+', line): 
+        start, end = t['ol_s'], t['ol_e']
+        line = t['lin'].join(re.split(t['nl']+'\s*[0-9]+[\.|\)]\s*',t['nl']+line))
+
+      # <ul>
+      elif re.match('\s*[\*|\-]+ ', line): 
+        start, end = t['ul_s'], t['ul_e']
+        line = t['li'].join(re.split(t['nl']+'\s*[\*|\-]+\s*',t['nl']+line))
+
+      # <h1>
+      elif re.match('([^#]+)'+t['nl']+'[#]+', line): 
+        start, end = t['h1_s'], t['h1_e']
+        line = re.sub('([^#]+)'+t['nl']+'[#]+','\\1',line).replace(t['nl'], "")
+
+      # <h2>
+      elif re.match('([^=]+)'+t['nl']+'[=]+', line): 
+        start, end = t['h2_s'], t['h2_e']
+        line = re.sub('([^=]+)'+t['nl']+'[=]+','\\1',line).replace(t['nl'], "")
+
+      # <h3>
+      elif re.match('([^-]+)'+t['nl']+'[-]+', line): 
+        start, end = t['h3_s'], t['h3_e']
+        line = re.sub('([^-]+)'+t['nl']+'[-]+','\\1',line).replace(t['nl'], "")
+
+      # <p>
+      elif line:
+        start = t['pa_s']
+        end = t['pa_e']
+        line = line.replace(t['nl']," ")
+
+      else:
+        start = ''
+        end= ''
+
+      if not doNothing:
+        line = line.replace('<',t['lt']).replace('>',t['gt'])
+        line = self.inline_decoration(line)
+
+      stack.append(start+line+end)
+    return "".join(stack)
+      
+
+  def inline_decoration(self, line):
+    t = self.tokens
+    re_a = '(^.*)(https?://[^ ]+)( \(.*\))?(.*)'
+    re_b = '([^*]*)\*(.*?)\*([^*]*)'
+    re_u = '([^_]*)_([^ ]*)_([^_]*)'
+    re_i = '([^\/]*)\/([^\/]+)\/([^\/]*)'
+    # <a>
+    if re.match(re_a, line): 
+      line = re.sub(re_a, self.encode_links, line)
+    # <b>
+    if re.match(re_b, line): 
+      line = re.sub(re_b, '\\1'+t['b_s']+'\\2'+t['b_e']+'\\3',line)
+    # <u>
+    if re.match(re_u, line): 
+      line = re.sub(re_u, '\\1'+t['u_s']+'\\2'+t['u_e']+'\\3',line)
+    # <i>
+    if re.match(re_i, line): 
+      line = re.sub(re_i,'\\1'+t['i_s']+'\\2'+t['i_e']+'\\3',line)
+    return line
+
+  def encode_links(self, m):
+    t = self.tokens
+    label = m.group(2)
+    if m.group(3):
+      label = m.group(3)
+    
+    # the label for the link might be text or the url itself
+    label = m.group(3) or m.group(2)
+
+    # nuke the brackets
+    label = re.sub('^\s?\((.*)\)$','\\1',label)
+
+    # replace /, _ with tokens, because they are special characters
+    label = label.replace('/',t['slash']).replace('_',t['under'])
+
+    # what a clusterfuck
+    s = str(m.group(1))+t['a_s']+str(m.group(2).replace('/',t['slash']).replace('_',t['under']))+t['a_m']+str(label)+t['a_e']
+    if m.group(4):
+      s += str(m.group(4))
+    return s
+
+  def sanitize_text(self, line):
+    t = self.tokens
+    line = line.replace('/',t['slash']).replace('_',t['under']).replace('<',t['lt']).replace('>',t['gt'])
+    return line
+  
+
+
+class htmlConverter():
+
+  translation = {"nl"   : "\n<br />"
+                ,"h1_s" : "\n<h1>"    ,"h1_e" : "</h1>"
+                ,"h2_s" : "\n<h2>"    ,"h2_e" : "</h2>"
+                ,"h3_s" : "\n<h3>"    ,"h3_e" : "</h3>"
+                ,"pa_s" : "\n<p>"     ,"pa_e" : "</p>\n"
+                ,"pr_s" : "\n<pre>"   ,"pr_e" : "</pre>\n"
+                ,"ol_s" : "\n<ol>"    ,"ol_e" : "\n</ol>\n"
+                ,"ul_s" : "\n<ul>"    ,"ul_e" : "\n</ul>\n"
+                ,"li"   : "\n  <li>"  ,"lin"  : "\n  <li>"
+                ,"a_s"  : "<a href='" ,"a_m"  : "'>" ,"a_e"  : "</a>"
+                ,"b_s"  : "<b>"       ,"b_e"  : "</b>"
+                ,"u_s"  : "<u>"       ,"u_e"  : "</u>"
+                ,"i_s"  : "<i>"       ,"i_e"  : "</i>"
+                ,"slash": "/"
+                ,"under": "_"
+                ,"lt"   : "&lt;"      ,"gt"   : "&gt;"
+                }
+
+  def __init__(self):
+    pass
+      
+  def convert(self, s):
+    for k, v in self.translation.items():
+      s = s.replace(tokenizer.tokens[k],v)
+    return s
+
+
+
+class restConverter():
+
+  translation = {"nl"   : "\n"
+                ,"h1_s" : "\n############\n" ,"h1_e" : "\n############\n"
+                ,"h2_s" : "\n************\n" ,"h2_e" : "\n************\n"
+                ,"h3_s" : "\n============\n" ,"h3_e" : "\n============\n"
+                ,"pa_s" : "\n\n"             ,"pa_e" : ""
+                ,"pr_s" : "\n``"             ,"pr_e" : "``"
+                ,"ol_s" : "\n"               ,"ol_e" : ""
+                ,"ul_s" : "\n"               ,"ul_e" : ""
+                ,"li"   : "\n  * "           ,"lin"  : "\n  #. "
+                ,"a_s"  : "`"                ,"a_m"  : " <" ,"a_e"  : ">`_"
+                ,"b_s"  : "**"               ,"b_e"  : "**"
+                ,"u_s"  : ""                 ,"u_e"  : ""
+                ,"i_s"  : "*"                ,"i_e"  : "*"
+                ,"slash": "/"
+                ,"under": "_"
+                ,"lt"   : "<"                ,"gt"   : ">"
+                }
+
+  def __init__(self):
+    pass
+      
+  def convert(self, s):
+    t = tokenizer.tokens
+
+    # rearrange links for rest
+    s = re.sub(t['a_s']+'(.*?)'+t['a_m']+'(.*?)'+t['a_e'],
+               t['a_s']+'\\2'+t['a_m']+'\\1'+t['a_e'],
+               s)
+
+    for k, v in self.translation.items():
+      s = s.replace(tokenizer.tokens[k],v)
+    return s
+
+
+
+class markdownConverter():
+  pass
+
+
+
+if __name__ == "__main__":
+  m = message()
+  t = tokenizer()
+
+  if len(sys.argv) == 1:
+    m.die("Missing arguments.")
+    
+  elif len(sys.argv) == 2:
+    s = t.tokenize(sys.argv[1])
+    c = htmlConverter()
+    print c.convert(s)
+
+  elif len(sys.argv) == 3 and sys.argv[2][-5:].lower() == ".html":
+    s = t.tokenize(sys.argv[1])
+    c = htmlConverter()
+    with open(sys.argv[2], 'w') as f:
+      f.write(c.convert(s))
+
+  elif len(sys.argv) == 3 and sys.argv[2][-4:].lower() == ".rst":
+    s = t.tokenize(sys.argv[1])
+    c = restConverter()
+    with open(sys.argv[2], 'w') as f:
+      f.write(c.convert(s))
+
+
+
