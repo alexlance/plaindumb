@@ -15,34 +15,32 @@ mean.
 This is the syntax of a plaindumb document as it compiles to HTML - as you can
 see it doesn't do much, and the syntax should appear most unsurprising to you.
 
-`
-   *bold*   /italic/   _underline_  ------>  <b>bold</b>  <i>italic</i>  <u>underline</u>
-
-   * unordered list                 ------>  <ul>
-   * unordered list second item     ------>    <li> unordered list
-                                    ------>    <li> unordered list second item
-                                    ------>  </ul>
-
-   1. ordered list                  ------>  <ol>
-   2. ordered list second item      ------>    <li> ordered list
-                                    ------>    <li> ordered list second item
-                                    ------>  </ol>
-
-     preformatted text              ------>  <pre>  preformatted text
-     preformatted text              ------>    preformatted text
-     preformatted text              ------>    preformatted text</pre>
-
-   header1                          ------>  <h1>header1</h1>
-   #######
-  
-   header2                          ------>  <h2>header2</h2>
-   =======
-
-   header3                          ------>  <h3>header3</h3>
-   -------
-
-   http://somelink.com              ------>  <a href="http://somelink.com">http://somelink.com</a>
-
-   http://somelink.com (Link text)  ------>  <a href="http://somelink.com">Link text</a>
-`
+    *bold*   /italic/   _underline_  ------>  <b>bold</b>  <i>italic</i>  <u>underline</u>
+    
+    * unordered list                 ------>  <ul>
+    * unordered list second item     ------>    <li> unordered list
+                                     ------>    <li> unordered list second item
+                                     ------>  </ul>
+    
+    1. ordered list                  ------>  <ol>
+    2. ordered list second item      ------>    <li> ordered list
+                                     ------>    <li> ordered list second item
+                                     ------>  </ol>
+    
+      preformatted text              ------>  <pre>  preformatted text
+      preformatted text              ------>    preformatted text
+      preformatted text              ------>    preformatted text</pre>
+    
+    header1                          ------>  <h1>header1</h1>
+    #######
+    
+    header2                          ------>  <h2>header2</h2>
+    =======
+    
+    header3                          ------>  <h3>header3</h3>
+    -------
+    
+    http://somelink.com              ------>  <a href="http://somelink.com">http://somelink.com</a>
+    
+    http://somelink.com (Link text)  ------>  <a href="http://somelink.com">Link text</a>
 
