@@ -131,17 +131,17 @@ class tokenizer:
       # <h1>
       elif re.match('([^#]+)'+t['nl']+'[#]+', line): 
         start, end = t['h1_s'], t['h1_e']
-        line = re.sub('([^#]+)'+t['nl']+'[#]+','\\1',line).replace(t['nl'], "")
+        line = re.sub('([^#]+)'+t['nl']+'[#]+',self.add_h1_to_table_of_contents, line).replace(t['nl'], "")
 
       # <h2>
       elif re.match('([^=]+)'+t['nl']+'[=]+', line): 
         start, end = t['h2_s'], t['h2_e']
-        line = re.sub('([^=]+)'+t['nl']+'[=]+','\\1',line).replace(t['nl'], "")
+        line = re.sub('([^=]+)'+t['nl']+'[=]+',self.add_h2_to_table_of_contents, line).replace(t['nl'], "")
 
       # <h3>
       elif re.match('([^-]+)'+t['nl']+'[-]+', line): 
         start, end = t['h3_s'], t['h3_e']
-        line = re.sub('([^-]+)'+t['nl']+'[-]+','\\1',line).replace(t['nl'], "")
+        line = re.sub('([^-]+)'+t['nl']+'[-]+',self.add_h3_to_table_of_contents, line).replace(t['nl'], "")
 
       # <p>
       elif line:
@@ -158,6 +158,22 @@ class tokenizer:
         line = self.inline_decoration(line)
 
       stack.append(start+line+end)
+
+      # load up the table of contents
+      slots = [0,0,0,0,0]
+      for i in self.table_of_contents_stack:
+        j = 1
+        num = ''
+        dot = ''
+        n = self.table_of_contents[i]['level']
+        slots[n] += 1
+        slots[n+1] = 0
+        while j <= n:
+          num += dot + str(slots[j])
+          dot = '.'
+          j += 1
+        self.table_of_contents[i]['prefix'] = num
+
     return "".join(stack)
       
 
@@ -166,7 +182,7 @@ class tokenizer:
     re_a = '(^.*)(https?://[^ ]+)( \(.*\))?(.*)'
     re_b = '([^*]*)\*(.*?)\*([^*]*)'
     re_u = '([^_]*)_([^ ]*)_([^_]*)'
-    re_i = '([^\/]*)\/([^\/]+)\/([^\/]*)'
+    re_i = '([^\/]+)\/([^\/]*?)\/([ ]+)'
     # <a>
     if re.match(re_a, line): 
       line = re.sub(re_a, self.encode_links, line)
