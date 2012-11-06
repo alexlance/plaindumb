@@ -50,7 +50,7 @@ class message:
 
 class tokenizer:
 
-  tokens = {"nl"   : "{PD-TOKEN-NL}"
+  tokens = {"nl"   : "{PD-TOKEN-NL}"          ,"nlp"  : "{PD-TOKEN-NLP}"
            ,"h1_s" : "{PD-S-TOKEN-HEADER-1}"  ,"h1_e" : "{PD-E-TOKEN-HEADER-1}"
            ,"h2_s" : "{PD-S-TOKEN-HEADER-2}"  ,"h2_e" : "{PD-E-TOKEN-HEADER-2}"
            ,"h3_s" : "{PD-S-TOKEN-HEADER-3}"  ,"h3_e" : "{PD-E-TOKEN-HEADER-3}"
@@ -68,26 +68,37 @@ class tokenizer:
            ,"lt"   : "{PD-TOKEN-LESSTHAN}" ,"gt"   : "{PD-TOKEN-GREATERTHAN}"
            }
 
+  table_of_contents_stack = []
+  table_of_contents = {}
+
   def __init__(self):
     pass
 
-  def tokenize(self, f):
+  def tokenize(self, lines):
     m = message()
-    if not os.path.exists(f):
-      m.die("File doesn't exist: "+f)
-
-    with open(f) as l:
-      lines = l.readlines()
-
-    out = "".join(lines)
-
-    # shorthand
     t = self.tokens
 
-    # prepend new line character, this makes the subsequent regexes simpler
-    out = "\n\n"+out
-    out = out.replace("\n",t['nl'])
-    clumps = out.split(t['nl']+t['nl'])
+    # prepend new line characters, this makes the subsequent regexes simpler
+    lines = "\n\n"+lines
+
+    # Handle the Do-Not-Touch Content markers eg: >>>content<<<
+    # DOTALL means that . matches newlines
+    if re.search('>>>(.*?)<<<', lines, re.DOTALL):
+      bits = re.split('(>>>|<<<)',lines,re.DOTALL)
+      go = False
+      lines = ''
+      for bit in bits:
+        if go:
+          bit = bit.replace('\n',t['nlp']) # permanent newlines
+          go = False
+        if bit == '>>>':
+          go = True
+        if bit == '<<<':
+          go = False
+        lines += bit
+
+    lines = lines.replace("\n",t['nl'])
+    clumps = lines.split(t['nl']+t['nl'])
     stack = []
 
     for line in clumps:
@@ -100,8 +111,7 @@ class tokenizer:
       # Text delimited by >>> and <<< is unaltered
       if re.match('>>>(.*?)<<<', line):
         doNothing = True
-        line = re.sub('>>>(.*?)<<<', '\\1', line)
-        line = line.replace(t['nl'],'\n')
+        line = line.replace('>>>','').replace('<<<','')
 
       # <pre>
       elif len(line)>0 and line[0] == ' ':
@@ -197,11 +207,26 @@ class tokenizer:
     line = line.replace('/',t['slash']).replace('_',t['under']).replace('<',t['lt']).replace('>',t['gt'])
     return line
   
+  def add_h1_to_table_of_contents(self,m):
+    self.table_of_contents_stack.append(len(self.table_of_contents))
+    self.table_of_contents[len(self.table_of_contents)] = {'prefix':'', 'label':m.group(1), 'level':1}
+    return m.group(1)
+
+  def add_h2_to_table_of_contents(self,m):
+    self.table_of_contents_stack.append(len(self.table_of_contents))
+    self.table_of_contents[len(self.table_of_contents)] = {'prefix':'', 'label':m.group(1), 'level':2}
+    return m.group(1)
+
+  def add_h3_to_table_of_contents(self,m):
+    self.table_of_contents_stack.append(len(self.table_of_contents))
+    self.table_of_contents[len(self.table_of_contents)] = {'prefix':'', 'label':m.group(1), 'level':3}
+    return m.group(1)
+
 
 
 class htmlConverter():
 
-  translation = {"nl"   : "\n<br />"
+  translation = {"nl"   : "\n<br />"  ,"nlp"  : "\n"
                 ,"h1_s" : "\n<h1>"    ,"h1_e" : "</h1>"
                 ,"h2_s" : "\n<h2>"    ,"h2_e" : "</h2>"
                 ,"h3_s" : "\n<h3>"    ,"h3_e" : "</h3>"
@@ -222,16 +247,26 @@ class htmlConverter():
   def __init__(self):
     pass
       
-  def convert(self, s):
+  def convert(self, s, tok):
     for k, v in self.translation.items():
       s = s.replace(tokenizer.tokens[k],v)
+
+    s = s.replace('$TOC',self.get_toc(tok))
     return s
+
+  def get_toc(self, tok):
+    t = '<ul class="table-of-contents">'
+    for i in tok.table_of_contents_stack:
+      t += '<li style="font-size:140%; margin-left:'+str(33*tok.table_of_contents[i]['level'])+'px;">'
+      t += tok.table_of_contents[i]['prefix']+' '+tok.table_of_contents[i]['label']
+    t += '</ul>'
+    return t
 
 
 
 class restConverter():
 
-  translation = {"nl"   : "\n"
+  translation = {"nl"   : "\n"               ,"nlp"  : "\n"
                 ,"h1_s" : "\n############\n" ,"h1_e" : "\n############\n"
                 ,"h2_s" : "\n************\n" ,"h2_e" : "\n************\n"
                 ,"h3_s" : "\n============\n" ,"h3_e" : "\n============\n"
@@ -274,23 +309,31 @@ class markdownConverter():
 if __name__ == "__main__":
   m = message()
   t = tokenizer()
+  f = sys.argv[1]
+
+  if not os.path.exists(f):
+    m.die("File doesn't exist: "+f)
+
+  with open(f) as l:
+    lines = l.read()
+
 
   if len(sys.argv) == 1:
     m.die("Missing arguments.")
     
   elif len(sys.argv) == 2:
-    s = t.tokenize(sys.argv[1])
+    s = t.tokenize(lines)
     c = htmlConverter()
-    print c.convert(s)
+    print c.convert(s, t)
 
   elif len(sys.argv) == 3 and sys.argv[2][-5:].lower() == ".html":
-    s = t.tokenize(sys.argv[1])
+    s = t.tokenize(lines)
     c = htmlConverter()
     with open(sys.argv[2], 'w') as f:
-      f.write(c.convert(s))
+      f.write(c.convert(s, t.table_of_contents_stack))
 
   elif len(sys.argv) == 3 and sys.argv[2][-4:].lower() == ".rst":
-    s = t.tokenize(sys.argv[1])
+    s = t.tokenize(lines)
     c = restConverter()
     with open(sys.argv[2], 'w') as f:
       f.write(c.convert(s))
