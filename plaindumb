@@ -63,12 +63,12 @@ class tokenizer:
            ,"b_s"  : "{PD-S-TOKEN-B}"         ,"b_e"  : "{PD-E-TOKEN-B}"
            ,"u_s"  : "{PD-S-TOKEN-U}"         ,"u_e"  : "{PD-E-TOKEN-U}"
            ,"i_s"  : "{PD-S-TOKEN-I}"         ,"i_e"  : "{PD-E-TOKEN-I}"
+           ,"star": "{PD-TOKEN-STAR}"
            ,"slash": "{PD-TOKEN-SLASH}"
            ,"under": "{PD-TOKEN-UNDERSCORE}"
            ,"lt"   : "{PD-TOKEN-LESSTHAN}" ,"gt"   : "{PD-TOKEN-GREATERTHAN}"
            }
 
-  table_of_contents_stack = []
   table_of_contents = {}
 
   def __init__(self):
@@ -161,11 +161,11 @@ class tokenizer:
 
       # load up the table of contents
       slots = [0,0,0,0,0]
-      for i in self.table_of_contents_stack:
+      for i, v in self.table_of_contents.items():
         j = 1
         num = ''
         dot = ''
-        n = self.table_of_contents[i]['level']
+        n = v['level']
         slots[n] += 1
         slots[n+1] = 0
         while j <= n:
@@ -179,64 +179,69 @@ class tokenizer:
 
   def inline_decoration(self, line):
     t = self.tokens
-    re_a = '(^.*)(https?://[^ ]+)( \(.*\))?(.*)'
-    re_b = '([^*]*)\*(.*?)\*([^*]*)'
-    re_u = '([^_]*)_([^ ]*)_([^_]*)'
-    re_i = '([^\/]+)\/([^\/]*?)\/([ ]+)'
-    # <a>
-    if re.match(re_a, line): 
-      line = re.sub(re_a, self.encode_links, line)
-    # <b>
-    if re.match(re_b, line): 
-      line = re.sub(re_b, '\\1'+t['b_s']+'\\2'+t['b_e']+'\\3',line)
-    # <u>
-    if re.match(re_u, line): 
-      line = re.sub(re_u, '\\1'+t['u_s']+'\\2'+t['u_e']+'\\3',line)
-    # <i>
-    if re.match(re_i, line): 
-      line = re.sub(re_i,'\\1'+t['i_s']+'\\2'+t['i_e']+'\\3',line)
+
+    # <a> links
+    line = re.sub('(^.*)(https?://[^ ]+)( \(.*\))?(.*)', self.encode_links, line)
+
+    # <b> *bold*
+
+    go = False
+    if re.search('variables',line):
+      #print line
+      go = True
+
+    #line = re.sub('(\A|\s|\W){1}\*(.*?)\*(\W|\s|\Z){1}','\\1'+t['b_s']+'\\2'+t['b_e']+'\\3',line)
+
+    line = re.sub('(\A|\s|\W){1}\*(.*?\*)','\\1'+t['b_s']+'\\2',line)
+    line = re.sub('(.*?)\*(\W|\s|\Z){1}','\\1'+t['b_e']+'\\2',line)
+
+    #if go:
+      #print line
+      #sys.exit()
+
+    linestartcharacters = '"\'([`~'
+    lineendcharacters = '"\')]`,.!?:;~'
+
+    # <u> _underlined_
+    line = re.sub('(\A|\s|\W){1}_(.*?)_(\W|\s|\Z){1}',  '\\1'+t['u_s']+'\\2'+t['u_e']+'\\3',line)
+
+    # <i> /italic/   but/not/this
+    line = re.sub('(\A|\s){1}\/(.*?)\/(\s|\Z){1}','\\1'+t['i_s']+'\\2'+t['i_e']+'\\3',line)
+
+
     return line
 
   def encode_links(self, m):
     t = self.tokens
-    label = m.group(2)
-    if m.group(3):
-      label = m.group(3)
-    
+
     # the label for the link might be text or the url itself
     label = m.group(3) or m.group(2)
 
     # nuke the brackets
     label = re.sub('^\s?\((.*)\)$','\\1',label)
 
-    # replace /, _ with tokens, because they are special characters
-    label = label.replace('/',t['slash']).replace('_',t['under'])
+    # replace /, _* with tokens, because they are special characters
+    label = str(label.replace('/',t['slash']).replace('_',t['under']).replace('*',t['star']))
+    link = str(m.group(2).replace('/',t['slash']).replace('_',t['under']).replace('*',t['star']))
 
     # what a clusterfuck
-    s = str(m.group(1))+t['a_s']+str(m.group(2).replace('/',t['slash']).replace('_',t['under']))+t['a_m']+str(label)+t['a_e']
+    s = str(m.group(1))+t['a_s']+link+t['a_m']+label+t['a_e']
     if m.group(4):
       s += str(m.group(4))
     return s
 
-  def sanitize_text(self, line):
-    t = self.tokens
-    line = line.replace('/',t['slash']).replace('_',t['under']).replace('<',t['lt']).replace('>',t['gt'])
-    return line
-  
   def add_h1_to_table_of_contents(self,m):
-    self.table_of_contents_stack.append(len(self.table_of_contents))
-    self.table_of_contents[len(self.table_of_contents)] = {'prefix':'', 'label':m.group(1), 'level':1}
+    #self.table_of_contents[len(self.table_of_contents)] = {'prefix':'', 'label':m.group(1), 'level':1}
+    #return '{H-ID-'+str(len(self.table_of_contents)-1)+'} '+ m.group(1)
     return m.group(1)
 
   def add_h2_to_table_of_contents(self,m):
-    self.table_of_contents_stack.append(len(self.table_of_contents))
-    self.table_of_contents[len(self.table_of_contents)] = {'prefix':'', 'label':m.group(1), 'level':2}
-    return m.group(1)
+    self.table_of_contents[len(self.table_of_contents)] = {'prefix':'', 'label':m.group(1), 'level':1}
+    return '{H-ID-'+str(len(self.table_of_contents)-1)+'} '+ m.group(1)
 
   def add_h3_to_table_of_contents(self,m):
-    self.table_of_contents_stack.append(len(self.table_of_contents))
-    self.table_of_contents[len(self.table_of_contents)] = {'prefix':'', 'label':m.group(1), 'level':3}
-    return m.group(1)
+    self.table_of_contents[len(self.table_of_contents)] = {'prefix':'', 'label':m.group(1), 'level':2}
+    return '{H-ID-'+str(len(self.table_of_contents)-1)+'} '+ m.group(1)
 
 
 
@@ -255,6 +260,7 @@ class htmlConverter():
                 ,"b_s"  : "<b>"       ,"b_e"  : "</b>"
                 ,"u_s"  : "<u>"       ,"u_e"  : "</u>"
                 ,"i_s"  : "<i>"       ,"i_e"  : "</i>"
+                ,"star": "*"
                 ,"slash": "/"
                 ,"under": "_"
                 ,"lt"   : "&lt;"      ,"gt"   : "&gt;"
@@ -262,19 +268,27 @@ class htmlConverter():
 
   def __init__(self):
     pass
-      
+
   def convert(self, s, tok):
+
+    # put an in-page anchor and the section number at the start of each header
+    for i, v in tok.table_of_contents.items():
+      s = s.replace('{H-ID-'+str(i)+'}', '<a name="'+v['prefix']+'"></a>'+v['prefix'])
+
+    # translate all the items from the tokens into the html 
     for k, v in self.translation.items():
       s = s.replace(tokenizer.tokens[k],v)
 
-    s = s.replace('$TOC',self.get_toc(tok))
+    # replace {TABLE-OF-CONTENTS} with the table of contents
+    s = s.replace('{TABLE-OF-CONTENTS}',self.get_toc(tok))
+
     return s
 
   def get_toc(self, tok):
     t = '<ul class="table-of-contents">'
-    for i in tok.table_of_contents_stack:
-      t += '<li style="font-size:140%; margin-left:'+str(33*tok.table_of_contents[i]['level'])+'px;">'
-      t += tok.table_of_contents[i]['prefix']+' '+tok.table_of_contents[i]['label']
+    for i, v in tok.table_of_contents.items():
+      t += '<li style="font-size:140%; margin-left:'+str(33*v['level'])+'px;">'
+      t += '<a href="#'+v['prefix']+'">'+v['prefix']+' '+v['label']+'</a>'
     t += '</ul>'
     return t
 
@@ -295,6 +309,7 @@ class restConverter():
                 ,"b_s"  : "**"               ,"b_e"  : "**"
                 ,"u_s"  : ""                 ,"u_e"  : ""
                 ,"i_s"  : "*"                ,"i_e"  : "*"
+                ,"star": "\*"
                 ,"slash": "/"
                 ,"under": "_"
                 ,"lt"   : "<"                ,"gt"   : ">"
@@ -346,7 +361,7 @@ if __name__ == "__main__":
     s = t.tokenize(lines)
     c = htmlConverter()
     with open(sys.argv[2], 'w') as f:
-      f.write(c.convert(s, t.table_of_contents_stack))
+      f.write(c.convert(s, t))
 
   elif len(sys.argv) == 3 and sys.argv[2][-4:].lower() == ".rst":
     s = t.tokenize(lines)
